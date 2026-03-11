@@ -18,6 +18,11 @@ local function load_tokens()
   return _tokens
 end
 
+-- Clears cache after 401 error.
+function M.invalidate_cache()
+  _tokens = nil
+end
+
 -- Writes tokens to disk and updates cache.
 local function save_tokens(tokens)
   _tokens = tokens
@@ -63,7 +68,7 @@ local function async_curl_action(method, endpoint, cb)
       if cb then cb() end
     end)
   end)
-  
+
   stdout:read_start(function(_, data)
     if data then table.insert(chunks, data) end
   end)
@@ -134,7 +139,8 @@ local function do_refresh(tokens, cb)
     local new = vim.fn.json_decode(raw)
     if new and new.access_token then
       tokens.access_token = new.access_token
-      save_tokens(tokens) -- Saves to disk and cache
+      _tokens = tokens        -- ← directly update the module-level cache
+      save_tokens(tokens)
       cb(tokens)
     else
       cb(nil)
@@ -160,6 +166,7 @@ function M.get_now_playing(cb)
 
     -- Token expired — refresh and retry once
     if data.error and data.error.status == 401 then
+      M.invalidate_cache()
       do_refresh(tokens, function(new_tokens)
         if not new_tokens then cb(nil); return end
         async_curl({
