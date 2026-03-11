@@ -2,11 +2,12 @@ local M = {}
 
 M.options = {
   poll_interval = 2000,   -- check Spotify every 2 seconds (ms)
+  position = 'bottom-left',  -- options: 'top-right', 'top-left', 'bottom-right', 'bottom-left'
   window = {
-    width = 42,
-    expanded_height = 14, -- tall: album art + track info
+    width = 30,
+    expanded_height = 16, -- tall: album art + track info
     compact_height = 3,   -- slim: just name, artist, time
-    expand_duration = 5000, -- ms before shrinking down
+    expand_duration = 1500, -- ms before shrinking down
   }
 }
 

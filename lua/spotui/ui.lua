@@ -22,10 +22,31 @@ end
 
 local function get_win_cfg(height)
   local w = config.options.window.width
+  local pos = config.options.position
+  local row, col
+
+  if pos == 'top-right' then
+    row = 1
+    col = vim.o.columns - w - 3
+  elseif pos == 'top-left' then
+    row = 1
+    col = 1
+  elseif pos == 'bottom-left' then
+    row = vim.o.lines - height - 4  -- -4 accounts for statusline + cmdline
+    col = 1
+  elseif pos == 'bottom-right' then
+    row = vim.o.lines - height - 4
+    col = vim.o.columns - w - 3
+  else
+    -- fallback to top-right
+    row = 1
+    col = vim.o.columns - w - 3
+  end
+
   return {
     relative = 'editor',
-    row = 1,
-    col = vim.o.columns - w - 3,
+    row = row,
+    col = col,
     width = w,
     height = height,
     style = 'minimal',
@@ -41,18 +62,38 @@ local function set_lines(lines)
   vim.bo[state.buf].modifiable = false
 end
 
+local function clean_name(name)
+  -- Remove (feat. ...) and (with ...) and [feat. ...] variants
+  name = name:gsub('%s*%(feat%.?[^%)]*%)', '')
+  name = name:gsub('%s*%[feat%.?[^%]]*%]', '')
+  name = name:gsub('%s*%(with[^%)]*%)', '')
+  return name:match('^%s*(.-)%s*$')  -- trim whitespace
+end
+
+local function trim_artist(artist, max_len)
+  if #artist <= max_len then return artist end
+  -- Cut at the last comma before max_len and add ...
+  local trimmed = artist:sub(1, max_len)
+  local last_comma = trimmed:match('.*(),')
+  if last_comma then
+    return artist:sub(1, last_comma - 1) .. ', ...'
+  end
+  return trimmed .. '...'
+end
+
 local function compact_lines(track)
   if not track then
     return { '  ♪  Nothing playing' }
   end
   local icon = track.is_playing and '▶' or '⏸'
+  local name = clean_name(track.name)
+  local artist = trim_artist(track.artist, 28)
   return {
-    ('  %s  %s'):format(icon, track.name),
-    ('     %s'):format(track.artist),
+    ('  %s  %s'):format(icon, name),
+    ('     %s'):format(artist),
     ('     %s / %s'):format(fmt_time(track.progress_ms), fmt_time(track.duration_ms)),
   }
 end
-
 local function shrink()
   if not win_valid() then return end
   state.expanded = false
@@ -97,24 +138,24 @@ local function expand(track)
 end
 
 local function on_tick()
-  local track = require('spotui.api').get_now_playing()
-
-  -- Same song — just update the timestamp
-  if state.current_track and track
-    and state.current_track.name == track.name then
-    state.current_track.progress_ms = track.progress_ms
-    state.current_track.is_playing  = track.is_playing
-    if not state.expanded and win_valid() then
-      set_lines(compact_lines(state.current_track))
+  if not win_valid() then return end
+  require('spotui.api').get_now_playing(function(track)
+    -- Same song — just update timestamp
+    if state.current_track and track
+      and state.current_track.name == track.name then
+      local old_secs = math.floor(state.current_track.progress_ms / 1000)
+      local new_secs = math.floor(track.progress_ms / 1000)
+      state.current_track.progress_ms = track.progress_ms
+      state.current_track.is_playing  = track.is_playing
+      if not state.expanded and win_valid() and old_secs ~= new_secs then
+        set_lines(compact_lines(state.current_track))
+      end
+      return
     end
-    return
-  end
-
-  -- New song or first load
-  state.current_track = track
-  if win_valid() then
-    expand(track)
-  end
+    -- New song or first load
+    state.current_track = track
+    if win_valid() then expand(track) end
+  end)
 end
 
 function M.init()
