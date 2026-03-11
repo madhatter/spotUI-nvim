@@ -18,9 +18,11 @@ function M.get_lines(url, width)
   -- Blocking download call as it only happens once per unique album.
   vim.fn.system(('curl -s -o "%s" "%s"'):format(tmp, url))
 
+  local devnull = vim.fn.has('win32') == 1 and '2>nul' or '2>/dev/null'
+
   local lines = vim.fn.systemlist(
-    ('chafa --size %dx12 --symbols braille --colors none --format symbols "%s" 2>nul')
-    :format(width - 4, tmp)
+    ('chafa --size %dx12 --symbols braille --colors none --format symbols "%s" %s')
+    :format(width - 4, tmp, devnull)
   )
 
   -- Strips returns from line endings.
