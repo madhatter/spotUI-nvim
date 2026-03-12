@@ -2,6 +2,15 @@
 local M = {}
 local _tokens = nil
 
+-- Safe JSON decode helper — wraps pcall so unexpected curl output
+-- (empty string, partial data, network errors) never crashes the plugin
+local function safe_decode(raw)
+  if not raw or vim.trim(raw) == '' then return nil end
+  local ok, result = pcall(vim.fn.json_decode, raw)
+  if not ok then return nil end
+  return result
+end
+
 -- Reads tokens from JSON file saved via scripts/get_token.py
 -- Uses cached tokens in _tokens if already loaded.
 local function load_tokens()
@@ -13,7 +22,7 @@ local function load_tokens()
     vim.notify('SpotUI: run scripts/get_token.py first!', vim.log.levels.ERROR)
     return nil
   end
-  _tokens = vim.fn.json_decode(f:read('*all'))
+  _tokens = safe_decode(f:read('*all'))
   f:close()
   return _tokens
 end
@@ -121,7 +130,7 @@ local function async_curl(args, cb)
     end)
   end)
 
-  stdout:read_start(function(err, data)
+  stdout:read_start(function(_, data)
     if data then
       table.insert(chunks, data)
     end
@@ -136,7 +145,7 @@ local function do_refresh(tokens, cb)
     '--user', tokens.client_id .. ':' .. tokens.client_secret,
     '-d', 'grant_type=refresh_token&refresh_token=' .. tokens.refresh_token,
   }, function(raw)
-    local new = vim.fn.json_decode(raw)
+    local new = safe_decode(raw)
     if new and new.access_token then
       tokens.access_token = new.access_token
       _tokens = tokens -- directly updates the module-level cache
@@ -159,9 +168,7 @@ function M.get_now_playing(cb)
     'https://api.spotify.com/v1/me/player/currently-playing',
     '-H', 'Authorization: Bearer ' .. tokens.access_token,
   }, function(raw)
-    if not raw or raw == '' then cb(nil); return end
-
-    local data = vim.fn.json_decode(raw)
+    local data = safe_decode(raw)
     if not data then cb(nil); return end
 
     -- Token expired — refresh and retry once
@@ -174,7 +181,7 @@ function M.get_now_playing(cb)
           'https://api.spotify.com/v1/me/player/currently-playing',
           '-H', 'Authorization: Bearer ' .. new_tokens.access_token,
         }, function(raw2)
-          local data2 = vim.fn.json_decode(raw2)
+          local data2 = safe_decode(raw2)
           if not data2 or not data2.item then cb(nil); return end
           cb(M._parse(data2))
         end)

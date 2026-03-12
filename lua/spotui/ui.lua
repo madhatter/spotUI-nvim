@@ -21,7 +21,10 @@ end
 
 -- Checks if floating window exists, countering potential user close.
 local function win_valid()
-  return state.win ~= nil and vim.api.nvim_win_is_valid(state.win)
+  if state.win ~= nil and not vim.api.nvim_win_is_valid(state.win) then
+    state.win = nil  -- clean up stale handle so we don't keep checking it
+  end
+  return state.win ~= nil
 end
 
 -- Builds window
